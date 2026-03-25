@@ -54,11 +54,11 @@ cmd_up() {
     info "Starting forged services..."
     cd "$FORGED_DIR"
 
-    # Resolve current IP for dnsmasq config
+    # Resolve current LAN IP (not loopback)
     local ip
-    ip=$(python3 -c "import socket; print(socket.gethostbyname('${FORGED_HOST}'))" 2>/dev/null || true)
+    ip=$(ifconfig en0 2>/dev/null | grep 'inet ' | awk '{print $2}')
     if [ -z "$ip" ]; then
-        ip=$(ifconfig | grep -A2 'en0\|en1' | grep 'inet ' | head -1 | awk '{print $2}')
+        ip=$(ifconfig en1 2>/dev/null | grep 'inet ' | awk '{print $2}')
     fi
     if [ -z "$ip" ]; then
         err "Cannot determine host IP. Set FORGED_HOST or check network."
@@ -67,9 +67,11 @@ cmd_up() {
     export SERVER_IP="$ip"
     log "Host IP: $ip"
 
-    # Write resolved dnsmasq config (substitute SERVER_IP and TFTP_ROOT)
+    # Write resolved dnsmasq config
     local tftp_root="${FORGED_DIR}/config/ipxe"
-    sed -e "s|\${SERVER_IP}|$ip|g" -e "s|\${TFTP_ROOT}|$tftp_root|g" \
+    sed -e "s|\${SERVER_IP}|$ip|g" \
+        -e "s|\${TFTP_ROOT}|$tftp_root|g" \
+        -e "s|\${FORGED_USER}|$(whoami)|g" \
         config/dnsmasq.conf > data/dnsmasq.conf.resolved
 
     # Start HTTP server (Docker)
@@ -451,6 +453,59 @@ cmd_setup() {
     echo "  4. Run './ctl reimage --profile hotcell' to install Linux"
 }
 
+cmd_build_usb() {
+    bold "Building iPXE USB boot image..."
+    echo ""
+    cd "$FORGED_DIR"
+
+    # Resolve server IP
+    local ip
+    ip=$(ifconfig en0 2>/dev/null | grep 'inet ' | awk '{print $2}')
+    if [ -z "$ip" ]; then
+        ip=$(ifconfig en1 2>/dev/null | grep 'inet ' | awk '{print $2}')
+    fi
+    if [ -z "$ip" ]; then
+        err "Cannot determine host IP."
+        exit 1
+    fi
+    log "Server IP: $ip"
+
+    # Create embedded script with resolved IP
+    local embed_resolved="${FORGED_DIR}/data/embed.ipxe"
+    sed "s/\${SERVER_IP}/$ip/g" config/ipxe/embed.ipxe > "$embed_resolved"
+
+    info "Building custom iPXE EFI binary (this may take a few minutes)..."
+
+    # Build iPXE in Docker (cross-compile x86_64 EFI on ARM Mac)
+    docker build -t forged-ipxe-builder -f Dockerfile.ipxe . 2>&1 | tail -5
+
+    local usb_dir="${FORGED_DIR}/data/usb/EFI/BOOT"
+    mkdir -p "$usb_dir"
+
+    docker run --rm \
+        -v "${embed_resolved}:/embed.ipxe:ro" \
+        -v "${usb_dir}:/out" \
+        forged-ipxe-builder \
+        bash -c "make -j\$(nproc) bin-x86_64-efi/ipxe.efi EMBED=/embed.ipxe && cp bin-x86_64-efi/ipxe.efi /out/BOOTX64.EFI"
+
+    if [ ! -f "${usb_dir}/BOOTX64.EFI" ]; then
+        err "Build failed."
+        exit 1
+    fi
+
+    echo ""
+    ok "USB boot image built: data/usb/EFI/BOOT/BOOTX64.EFI"
+    echo ""
+    bold "To create the USB stick:"
+    echo "  1. Insert a USB drive"
+    echo "  2. Find it:  diskutil list"
+    echo "  3. Format:   diskutil eraseDisk FAT32 IPXE MBRFormat /dev/diskN"
+    echo "  4. Copy:     cp -r data/usb/* /Volumes/IPXE/"
+    echo "  5. Eject:    diskutil eject /dev/diskN"
+    echo ""
+    echo "Then set USB as first boot priority in BIOS (or use F8 boot menu)."
+}
+
 cmd_help() {
     bold "forged — bare metal provisioning"
     echo ""
@@ -458,8 +513,9 @@ cmd_help() {
     echo ""
     echo "Setup:"
     echo "  setup                     Download dependencies and check config"
-    echo "  up                        Start forged Docker services"
-    echo "  down                      Stop forged Docker services"
+    echo "  build-usb                 Build iPXE USB boot stick image"
+    echo "  up                        Start forged services"
+    echo "  down                      Stop forged services"
     echo "  logs [service]            Tail service logs"
     echo ""
     echo "Boot control:"
@@ -499,6 +555,7 @@ case "$cmd" in
     wake)      cmd_wake "$@" ;;
     ssh)       cmd_ssh "$@" ;;
     setup)     cmd_setup "$@" ;;
+    build-usb) cmd_build_usb "$@" ;;
     help|--help|-h) cmd_help ;;
     *)
         err "Unknown command: $cmd"

@@ -11,6 +11,6 @@ echo   Windows NVMe will NOT be touched.
 echo ==========================================
 echo
 
-kernel ${server}/ubuntu/vmlinuz autoinstall ds=nocloud-net\;s=${server}/autoinstall/ ---
+kernel ${server}/ubuntu/vmlinuz autoinstall ip=dhcp ds=nocloud-net\;s=${server}/autoinstall/ url=${server}/ubuntu/ubuntu-24.04.iso ---
 initrd ${server}/ubuntu/initrd
 boot

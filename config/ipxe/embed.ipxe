@@ -1,0 +1,19 @@
+#!ipxe
+# Embedded script for USB-booted iPXE.
+# Server IP is substituted at build time by ./ctl build-usb.
+
+dhcp
+echo
+echo ========================================
+echo   forged USB boot
+echo ========================================
+echo
+
+set server http://${SERVER_IP}:8070
+chain ${server}/ipxe/boot.ipxe || goto failed
+
+:failed
+echo
+echo Failed to reach forged server at ${SERVER_IP}:8070
+echo Dropping to iPXE shell...
+shell

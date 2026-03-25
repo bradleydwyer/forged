@@ -9,8 +9,8 @@
 
 dhcp
 
-# Server URL derived from the ProxyDHCP server's IP
-set server http://${next-server}:8070
+# Use server set by USB embed script, or fall back to ProxyDHCP next-server
+isset ${server} || set server http://${next-server}:8070
 
 echo
 echo ========================================
