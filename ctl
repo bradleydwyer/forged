@@ -9,11 +9,18 @@ set -euo pipefail
 
 FORGED_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Configuration — edit these for your setup
+# Load .env if present
+if [ -f "${FORGED_DIR}/.env" ]; then
+    set -a
+    source "${FORGED_DIR}/.env"
+    set +a
+fi
+
+# Configuration — .env overrides these defaults
 FORGED_HOST="${FORGED_HOST:-lumina.local}"
 FORGED_PORT="${FORGED_PORT:-8070}"
 TARGET_HOST="${TARGET_HOST:-hotcell-bench}"
-TARGET_MAC="${TARGET_MAC:-}"  # Set to desktop's MAC for WoL
+TARGET_MAC="${TARGET_MAC:-}"
 
 # Colors
 RED='\033[0;31m'
@@ -24,6 +31,8 @@ BOLD='\033[1m'
 RESET='\033[0m'
 
 API="http://${FORGED_HOST}:${FORGED_PORT}"
+DNSMASQ_PID_FILE="${FORGED_DIR}/data/dnsmasq.pid"
+DNSMASQ_LOG_FILE="${FORGED_DIR}/data/dnsmasq.log"
 
 log()  { echo -e "${DIM}$*${RESET}"; }
 info() { echo -e "${CYAN}$*${RESET}"; }
@@ -58,23 +67,72 @@ cmd_up() {
     export SERVER_IP="$ip"
     log "Host IP: $ip"
 
-    # Write resolved dnsmasq config (substitute SERVER_IP)
-    sed "s/\${SERVER_IP}/$ip/g" config/dnsmasq.conf > data/dnsmasq.conf.resolved
+    # Write resolved dnsmasq config (substitute SERVER_IP and TFTP_ROOT)
+    local tftp_root="${FORGED_DIR}/config/ipxe"
+    sed -e "s|\${SERVER_IP}|$ip|g" -e "s|\${TFTP_ROOT}|$tftp_root|g" \
+        config/dnsmasq.conf > data/dnsmasq.conf.resolved
 
+    # Start HTTP server (Docker)
     docker compose up -d --build
+
+    # Start dnsmasq natively (Docker on macOS can't do host networking)
+    if [ -f "$DNSMASQ_PID_FILE" ] && kill -0 "$(cat "$DNSMASQ_PID_FILE")" 2>/dev/null; then
+        log "dnsmasq already running (pid $(cat "$DNSMASQ_PID_FILE"))"
+    else
+        if ! command -v dnsmasq &>/dev/null; then
+            err "dnsmasq not found. Install it: brew install dnsmasq"
+            exit 1
+        fi
+        sudo dnsmasq \
+            --conf-file="${FORGED_DIR}/data/dnsmasq.conf.resolved" \
+            --pid-file="$DNSMASQ_PID_FILE" \
+            --log-facility="$DNSMASQ_LOG_FILE"
+        ok "dnsmasq started (pid $(cat "$DNSMASQ_PID_FILE"))"
+    fi
+
     ok "Forged services running on ${FORGED_HOST}:${FORGED_PORT}"
 }
 
 cmd_down() {
     info "Stopping forged services..."
     cd "$FORGED_DIR"
+
+    # Stop native dnsmasq
+    if [ -f "$DNSMASQ_PID_FILE" ]; then
+        local pid
+        pid=$(cat "$DNSMASQ_PID_FILE")
+        if kill -0 "$pid" 2>/dev/null; then
+            sudo kill "$pid"
+            log "dnsmasq stopped (pid $pid)"
+        fi
+        rm -f "$DNSMASQ_PID_FILE"
+    fi
+
+    # Stop HTTP server (Docker)
     docker compose down
     ok "Forged services stopped."
 }
 
 cmd_logs() {
     cd "$FORGED_DIR"
-    docker compose logs -f "${1:-}"
+    if [ "${1:-}" = "dnsmasq" ]; then
+        if [ -f "$DNSMASQ_LOG_FILE" ]; then
+            tail -f "$DNSMASQ_LOG_FILE"
+        else
+            err "No dnsmasq log file found. Is dnsmasq running?"
+        fi
+    elif [ -n "${1:-}" ]; then
+        docker compose logs -f "$1"
+    else
+        # Show both dnsmasq and HTTP logs
+        if [ -f "$DNSMASQ_LOG_FILE" ]; then
+            log "=== dnsmasq (last 20 lines) ==="
+            tail -20 "$DNSMASQ_LOG_FILE"
+            echo ""
+        fi
+        log "=== http (following) ==="
+        docker compose logs -f
+    fi
 }
 
 cmd_boot() {
@@ -232,18 +290,25 @@ cmd_status() {
     bold "forged status"
     echo ""
 
-    # Server status
+    # dnsmasq status
+    if [ -f "$DNSMASQ_PID_FILE" ] && kill -0 "$(cat "$DNSMASQ_PID_FILE")" 2>/dev/null; then
+        ok "  dnsmasq: running (pid $(cat "$DNSMASQ_PID_FILE"))"
+    else
+        err "  dnsmasq: not running"
+    fi
+
+    # HTTP server status
     if api_ok; then
         local status
         status=$(curl -sf "${API}/status")
         local mode profile
         mode=$(echo "$status" | python3 -c "import sys,json; print(json.load(sys.stdin)['mode'])" 2>/dev/null || echo "unknown")
         profile=$(echo "$status" | python3 -c "import sys,json; print(json.load(sys.stdin)['profile'])" 2>/dev/null || echo "unknown")
-        ok "  Server: running (${API})"
+        ok "  HTTP:    running (${API})"
         echo -e "  Mode:    ${BOLD}${mode}${RESET}"
         echo -e "  Profile: ${profile}"
     else
-        err "  Server: not running"
+        err "  HTTP:    not running"
     fi
 
     # Target status
@@ -306,6 +371,18 @@ cmd_setup() {
 
     # Create data directory
     mkdir -p "${FORGED_DIR}/data"
+
+    # Install dnsmasq if not present (must run natively on macOS for PXE)
+    if ! command -v dnsmasq &>/dev/null; then
+        info "Installing dnsmasq via Homebrew..."
+        brew install dnsmasq
+        ok "dnsmasq installed"
+        echo ""
+        log "NOTE: Homebrew's dnsmasq service is NOT used."
+        log "forged manages dnsmasq directly via './ctl up'."
+    else
+        log "dnsmasq already installed ($(which dnsmasq))"
+    fi
 
     # Download iPXE EFI binary if not present
     if [ ! -f "${FORGED_DIR}/config/ipxe/ipxe.efi" ]; then

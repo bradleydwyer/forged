@@ -1,22 +1,10 @@
 services:
-  dnsmasq:
-    build:
-      context: .
-      dockerfile: Dockerfile.dnsmasq
-    network_mode: host
-    cap_add:
-      - NET_ADMIN
-    volumes:
-      - ./config/ipxe:/tftp/ipxe:ro
-      - ./config/ipxe/ipxe.efi:/tftp/ipxe.efi:ro
-      - ./data/dnsmasq.conf.resolved:/etc/dnsmasq.conf:ro
-    restart: unless-stopped
-
   http:
     build:
       context: .
       dockerfile: Dockerfile.http
-    network_mode: host
+    ports:
+      - "8070:8070"
     volumes:
       - ./config:/srv/config:ro
       - ./data:/srv/data

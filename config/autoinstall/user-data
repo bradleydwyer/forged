@@ -8,9 +8,8 @@ autoinstall:
   identity:
     hostname: hotcell-bench
     username: brad
-    # Generate a password hash with: mkpasswd -m sha-512 <password>
-    # This is a placeholder — replace before first use
-    password: "$6$placeholder$REPLACE_THIS_WITH_A_REAL_HASH"
+    # Password: admin (same as Tart VM default, console fallback only)
+    password: "$6$pIg5vCcwca/eea1P$kI8MgC/uqAU5rN2AWy7WyOzdaG0j4j/X6PvTq6Cx74arymtDiQ3U.VsrJJq4ixdvfzbLLHH6sAo22LgVRVaGw0"
 
   ssh:
     install-server: true
@@ -19,14 +18,14 @@ autoinstall:
     allow-pw: false
 
   # Target the Linux NVMe by serial number.
-  # CRITICAL: Get this from Windows with:
-  #   Get-PhysicalDisk | Select FriendlyName, SerialNumber, Size
-  # Replace LINUX_NVME_SERIAL below with the actual serial.
+  # DANGER: Two nearly identical Kingston drives in this machine:
+  #   3955 = new drive (REIMAGE TARGET)
+  #   3905 = original drive (DO NOT TOUCH — Windows)
   storage:
     config:
       - id: linux-nvme
         type: disk
-        serial: LINUX_NVME_SERIAL
+        serial: 0026_B768_6A02_3955
         ptable: gpt
         wipe: superblock
         grub_device: true
