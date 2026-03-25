@@ -1,0 +1,114 @@
+#cloud-config
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+
+  identity:
+    hostname: hotcell-bench
+    username: brad
+    # Generate a password hash with: mkpasswd -m sha-512 <password>
+    # This is a placeholder — replace before first use
+    password: "$6$placeholder$REPLACE_THIS_WITH_A_REAL_HASH"
+
+  ssh:
+    install-server: true
+    authorized-keys:
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICL5ZeWXP0OXfJ95xjEMcp1Cl6BL4ZXmDdRtZkpn4umx brad@dwyer.au"
+    allow-pw: false
+
+  # Target the Linux NVMe by serial number.
+  # CRITICAL: Get this from Windows with:
+  #   Get-PhysicalDisk | Select FriendlyName, SerialNumber, Size
+  # Replace LINUX_NVME_SERIAL below with the actual serial.
+  storage:
+    config:
+      - id: linux-nvme
+        type: disk
+        serial: LINUX_NVME_SERIAL
+        ptable: gpt
+        wipe: superblock
+        grub_device: true
+
+      # EFI System Partition
+      - id: efi-part
+        type: partition
+        device: linux-nvme
+        size: 512M
+        flag: boot
+        grub_device: true
+      - id: efi-format
+        type: format
+        fstype: fat32
+        volume: efi-part
+      - id: efi-mount
+        type: mount
+        device: efi-format
+        path: /boot/efi
+
+      # /boot partition
+      - id: boot-part
+        type: partition
+        device: linux-nvme
+        size: 2G
+      - id: boot-format
+        type: format
+        fstype: ext4
+        volume: boot-part
+      - id: boot-mount
+        type: mount
+        device: boot-format
+        path: /boot
+
+      # Root partition (remainder of disk)
+      - id: root-part
+        type: partition
+        device: linux-nvme
+        size: -1
+      - id: root-format
+        type: format
+        fstype: ext4
+        volume: root-part
+      - id: root-mount
+        type: mount
+        device: root-format
+        path: /
+
+  packages:
+    - build-essential
+    - pkg-config
+    - libssl-dev
+    - e2fsprogs
+    - qemu-utils
+    - curl
+    - git
+    - jq
+    - htop
+    - openssh-server
+    - linux-tools-generic
+    - cpu-checker
+    - net-tools
+    - virtiofsd
+    - avahi-daemon
+    - wakeonlan
+    - python3-pip
+
+  late-commands:
+    # Allow passwordless reboot/shutdown
+    - >-
+      printf 'brad ALL=(ALL) NOPASSWD: /sbin/reboot, /sbin/shutdown, /sbin/poweroff, /usr/bin/efibootmgr\n'
+      > /target/etc/sudoers.d/forged
+    - chmod 440 /target/etc/sudoers.d/forged
+
+    # Add brad to kvm group
+    - curtin in-target -- usermod -aG kvm brad
+
+    # Install Rust for brad
+    - curtin in-target -- su - brad -c 'curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y'
+
+    # Signal completion to forged server (resets mode to linux)
+    - curtin in-target -- curl -sf -X POST http://lumina.local:8070/api/install-complete || true
+
+    # Mark install complete locally
+    - touch /target/var/tmp/forged-install-complete

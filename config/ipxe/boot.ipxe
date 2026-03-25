@@ -1,0 +1,29 @@
+#!ipxe
+#
+# forged boot manager
+#
+# Every boot goes through this script (PXE is first in BIOS).
+# Fetches a mode-specific script from the forged server.
+# If the server is unreachable, boots from local disk.
+#
+
+dhcp
+
+# Server URL derived from the ProxyDHCP server's IP
+set server http://${next-server}:8070
+
+echo
+echo ========================================
+echo   forged boot manager
+echo ========================================
+echo   Server: ${server}
+echo
+
+# Try to chainload the mode-specific script.
+# The HTTP server redirects /ipxe/current to the active mode script.
+# If unreachable, fall through to local disk.
+chain ${server}/ipxe/current.ipxe || goto fallback
+
+:fallback
+echo Server unreachable - booting from local disk...
+exit 0

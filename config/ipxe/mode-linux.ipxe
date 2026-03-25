@@ -1,0 +1,5 @@
+#!ipxe
+echo Mode: linux
+echo Booting Linux from local disk...
+echo
+exit 0

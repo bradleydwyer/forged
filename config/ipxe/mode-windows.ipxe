@@ -1,0 +1,15 @@
+#!ipxe
+echo Mode: windows
+echo Booting Windows from local disk...
+echo
+# Exit with a different code or use sanboot to target the Windows drive
+# For now, we rely on BIOS boot order: if PXE exits, BIOS tries the next device.
+# Set Windows NVMe as the second boot device in BIOS for this to work.
+#
+# If both NVMe drives are in the boot order, we need to control which one
+# boots. Options:
+#   1. sanboot --drive 0x80  (first BIOS drive — typically Windows)
+#   2. chain specific EFI path on the Windows ESP
+#
+# This will need tuning after first boot — see docs for details.
+exit 0

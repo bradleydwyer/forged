@@ -1,0 +1,13 @@
+# Environment
+.env
+
+# Runtime data (mode files, resolved configs)
+data/
+
+# Downloaded binaries (large, fetched by ./ctl setup)
+config/ipxe/ipxe.efi
+config/ubuntu/vmlinuz
+config/ubuntu/initrd
+
+# macOS
+.DS_Store

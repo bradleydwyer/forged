@@ -1,0 +1,6 @@
+FROM alpine:3.21
+RUN apk add --no-cache dnsmasq
+# ipxe.efi is mounted via volume (downloaded by ./ctl setup)
+# dnsmasq.conf is generated at runtime by ./ctl up (resolves SERVER_IP)
+EXPOSE 69/udp 4011/udp
+ENTRYPOINT ["dnsmasq", "--no-daemon", "--log-facility=-"]

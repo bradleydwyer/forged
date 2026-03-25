@@ -1,0 +1,16 @@
+#!ipxe
+
+# Server is already set by the parent boot.ipxe, but set it again
+# in case this script is chainloaded directly.
+isset ${server} || set server http://${next-server}:8070
+
+echo
+echo ==========================================
+echo   FORGED: RE-IMAGING LINUX DRIVE
+echo   Windows NVMe will NOT be touched.
+echo ==========================================
+echo
+
+kernel ${server}/ubuntu/vmlinuz autoinstall ds=nocloud-net\;s=${server}/autoinstall/ ---
+initrd ${server}/ubuntu/initrd
+boot
