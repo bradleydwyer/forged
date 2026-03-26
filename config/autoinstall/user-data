@@ -19,13 +19,13 @@ autoinstall:
 
   # Target the Linux NVMe by serial number.
   # DANGER: Two nearly identical Kingston drives in this machine:
-  #   3955 = new drive (REIMAGE TARGET)
-  #   3905 = original drive (DO NOT TOUCH — Windows)
+  #   50026B7686A02395 = new drive (REIMAGE TARGET)
+  #   50026B7686A02390 = original drive (DO NOT TOUCH — Windows)
   storage:
     config:
       - id: linux-nvme
         type: disk
-        serial: 0026_B768_6A02_3955
+        serial: 50026B7686A02395
         ptable: gpt
         wipe: superblock
         grub_device: true
