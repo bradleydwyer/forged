@@ -25,7 +25,8 @@ autoinstall:
     config:
       - id: linux-nvme
         type: disk
-        serial: 50026B7686A02395
+        match:
+          serial: KINGSTON_SKC3000D4096G_50026B7686A02395_1
         ptable: gpt
         wipe: superblock
         grub_device: true
@@ -100,11 +101,11 @@ autoinstall:
       > /target/etc/sudoers.d/forged
     - chmod 440 /target/etc/sudoers.d/forged
 
-    # Add brad to kvm group
-    - curtin in-target -- usermod -aG kvm brad
+    # Add brad to kvm group (may not exist if qemu-kvm not installed)
+    - curtin in-target -- bash -c 'getent group kvm && usermod -aG kvm brad || true'
 
     # Install Rust for brad
-    - curtin in-target -- su - brad -c 'curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y'
+    - curtin in-target -- su - brad -c 'curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y' || true
 
     # Signal completion to forged server (resets mode to linux)
     - curtin in-target -- curl -sf -X POST http://lumina.local:8070/api/install-complete || true
